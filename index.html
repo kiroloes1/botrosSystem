@@ -1,0 +1,460 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Manager - Segmentation Simulator</title>
+    <!-- Tailwind CSS for Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SweetAlert2 for Popups -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #F5FBE6; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #DE802B; border-radius: 10px; }
+    </style>
+</head>
+<body class="min-h-screen py-10 px-4">
+
+    <div class="max-w-6xl mx-auto bg-white shadow-2xl rounded-3xl overflow-hidden border-4" style="border-color: #233D4F">
+        
+        <!-- Header -->
+        <div style="background-color: #233D4F" class="p-8 text-white">
+            <h2 class="text-4xl font-black text-center tracking-tighter uppercase">
+                Memory <span style="color: #DE802B">Manager</span>
+            </h2>
+            <p class="text-center opacity-80 mt-2 font-medium italic"> Segmentation Simulator</p>
+        </div>
+
+        <div class="p-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <!-- Left Column: Controls -->
+            <div class="lg:col-span-7 space-y-8">
+                
+                <!-- Config Card -->
+                <div class="p-6 rounded-2xl border-2" style="border-color: rgba(33, 94, 97, 0.2); background-color: #F5FBE6;">
+                    <h3 class="text-lg font-black mb-4 flex items-center gap-2" style="color: #233D4F">
+                        <div class="w-2 h-6" style="background-color: #DE802B"></div> CONFIGURATION
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-bold mb-1 opacity-60">TOTAL RAM (KB)</label>
+                            <input id="totalMemory" type="number" placeholder="1000" oninput="updateState()"
+                                class="w-full p-3 rounded-xl border-2 font-bold outline-none focus:ring-2 border-[#215E61]">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold mb-1 opacity-60">ALGO STRATEGY</label>
+                            <select id="algoStrategy" onchange="updateState()"
+                                class="w-full p-3 rounded-xl border-2 font-bold outline-none bg-white border-[#215E61]">
+                                <option value="first-fit">First Fit (Fast)</option>
+                                <option value="best-fit">Best Fit (Optimal)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Holes Card -->
+                <div class="p-6 rounded-2xl border-2 border-[#215E61]">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-black text-[#215E61]">AVAILABLE HOLES</h3>
+                        <button onclick="addHole()" class="text-white px-4 py-2 rounded-lg font-bold text-sm bg-[#215E61] active:scale-95 transition-transform">
+                            + Add Hole
+                        </button>
+                    </div>
+                    <div id="holesList" class="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar"></div>
+                </div>
+
+<!-- Processes Card -->
+<div class="p-6 rounded-2xl border-2 shadow-inner bg-white border-[#DE802B]">
+    <div class="flex justify-between items-center mb-6">
+        <h3 class="text-lg font-black text-[#233D4F]">
+            PROCESS QUEUE
+        </h3>
+
+        <button onclick="addProcess()"
+            class="text-white px-4 py-2 rounded-xl font-bold bg-[#DE802B] hover:opacity-90 shadow-md">
+            + New Process
+        </button>
+    </div>
+
+    <div id="processQueue" class="space-y-6"></div>
+</div>
+
+<!-- Allocated Processes -->
+<div class="p-6 rounded-2xl border-2 border-[#215E61]">
+    
+    <h3 class="text-lg font-black text-[#233D4F] mb-4">
+        ALLOCATED PROCESSES
+    </h3>
+
+    <div id="allocatedList" class="space-y-3"></div>
+
+</div>
+
+
+
+            </div>
+
+            <!-- Right Column: Memory Map -->
+            <div class="lg:col-span-5">
+                <div class="sticky top-10">
+                    <h3 class="text-xl font-black mb-6 flex items-center gap-2" style="color: #233D4F">
+                        <div class="w-2 h-8" style="background-color: #215E61"></div> MEMORY MAP
+                    </h3>
+                    
+                    <div id="memoryMapContainer" class="relative border-4 rounded-3xl overflow-hidden min-h-[600px] shadow-2xl bg-gray-200 border-[#233D4F]">
+                        <div id="memoryMap" class="absolute inset-0 flex flex-col"></div>
+                    </div>
+
+                    <button onclick="runSimulation()" class="w-full mt-6 p-5 rounded-2xl font-black text-2xl text-white shadow-xl bg-[#233D4F] hover:scale-[1.02] active:scale-95 transition-all">
+                        RUN SIMULATION →
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // --- State Management ---
+        let state = {
+            totalMemory: 0,
+            algo: 'first-fit',
+            holes: [{ id: Date.now(), startingAddress: 0, size: 0 }],
+            processes: [{ id: Date.now(), name: "", segments: [{ name: "", size: 0 }] }],
+            allocatedProcesses: []
+        };
+
+        // --- Functions ---
+        function updateState() {
+            state.totalMemory = Number(document.getElementById('totalMemory').value);
+            state.algo = document.getElementById('algoStrategy').value;
+            render();
+        }
+
+        function addHole() {
+            const currentSize = state.holes.reduce((acc, h) => acc + h.size, 0);
+            if (state.totalMemory > 0 && currentSize >= state.totalMemory) {
+                Swal.fire({ title: 'Cannot add hole', text: 'Exceeds total memory', icon: 'error' });
+                return;
+            }
+            state.holes.push({ id: Date.now(), startingAddress: "", size: 0 });
+            render();
+        }
+
+        function removeHole(id) {
+            state.holes = state.holes.filter(h => h.id !== id);
+            render();
+        }
+
+        function addProcess() {
+            state.processes.push({ id: Date.now(), name: "", segments: [{ name: "", size: 0 }] });
+            render();
+        }
+
+        function removeProcess(id) {
+            state.processes = state.processes.filter(p => p.id !== id);
+            render();
+        }
+
+        function addSegment(pId) {
+            const process = state.processes.find(p => p.id === pId);
+            process.segments.push({ name: "", size: 0 });
+            render();
+        }
+
+        function removeSegment(pId, sIdx) {
+            const process = state.processes.find(p => p.id === pId);
+            process.segments.splice(sIdx, 1);
+            render();
+        }
+
+function runSimulation() {
+
+    if (state.totalMemory <= 0) {
+        Swal.fire({
+            title: 'Error',
+            text: 'Please set total memory first',
+            icon: 'warning'
+        });
+        return;
+    }
+
+    let holesCopy = JSON.parse(JSON.stringify(state.holes));
+
+    let allocatedNow = [];
+    let remainingProcesses = [];
+
+    state.processes.forEach(process => {
+
+        let allocatedSegments = [];
+        let failedSegments = [];
+
+        process.segments.forEach(seg => {
+
+            let chosenIndex = -1;
+
+            // First Fit
+            if (state.algo === 'first-fit') {
+
+                chosenIndex = holesCopy.findIndex(
+                    h => Number(h.size) >= Number(seg.size)
+                );
+
+            }
+
+            // Best Fit
+            else {
+
+                let minSize = Infinity;
+
+                holesCopy.forEach((h, idx) => {
+
+                    if (
+                        Number(h.size) >= Number(seg.size) &&
+                        Number(h.size) < minSize
+                    ) {
+
+                        minSize = Number(h.size);
+                        chosenIndex = idx;
+                    }
+                });
+            }
+
+            // Segment Allocated
+            if (chosenIndex !== -1) {
+
+                let start = Number(
+                    holesCopy[chosenIndex].startingAddress
+                );
+
+                allocatedSegments.push({
+                    ...seg,
+                    startAddr: start,
+                    allocated: true
+                });
+
+                holesCopy[chosenIndex].startingAddress += Number(seg.size);
+
+                holesCopy[chosenIndex].size -= Number(seg.size);
+
+            }
+
+            // Segment Failed
+            else {
+
+                failedSegments.push({
+                    ...seg,
+                    allocated: false
+                });
+            }
+
+        });
+
+        // لو فيه Segments allocated
+        if (allocatedSegments.length > 0) {
+
+            allocatedNow.push({
+                id: process.id,
+                name: process.name,
+                segments: allocatedSegments
+            });
+
+        }
+
+        // لو فيه Segments failed
+        if (failedSegments.length > 0) {
+
+            remainingProcesses.push({
+                id: process.id + Math.random(),
+                name: process.name + " (Remaining)",
+                segments: failedSegments
+            });
+
+            Swal.fire({
+                title: `${process.name}: Some segments could not fit`,
+                icon: 'warning'
+            });
+        }
+
+    });
+
+    state.allocatedProcesses = [
+        ...state.allocatedProcesses,
+        ...allocatedNow
+    ];
+
+    state.processes = remainingProcesses;
+
+    state.holes = holesCopy;
+
+    render();
+}
+        function deallocateProcess(processId) {
+
+    // البحث عن الـ Process
+    const processIndex = state.allocatedProcesses.findIndex(
+        p => p.id === processId
+    );
+
+    if (processIndex === -1) return;
+
+    const process = state.allocatedProcesses[processIndex];
+
+    // تحويل الـ Segments إلى Holes
+    process.segments.forEach(seg => {
+        state.holes.push({
+            id: Date.now() + Math.random(),
+            startingAddress: seg.startAddr,
+            size: seg.size
+        });
+    });
+
+    // حذف الـ Process من allocated
+    state.allocatedProcesses.splice(processIndex, 1);
+
+    // رجوعه للـ Queue
+    state.processes.push({
+        id: process.id,
+        name: process.name,
+        segments: process.segments.map(s => ({
+            name: s.name,
+            size: s.size
+        }))
+    });
+
+    // ترتيب الـ Holes حسب الـ Address
+    state.holes.sort(
+        (a, b) => a.startingAddress - b.startingAddress
+    );
+
+    // دمج الـ Holes المجاورة
+    let merged = [];
+
+    state.holes.forEach(hole => {
+
+        if (
+            merged.length > 0 &&
+            merged[merged.length - 1].startingAddress +
+            merged[merged.length - 1].size === hole.startingAddress
+        ) {
+
+            merged[merged.length - 1].size += hole.size;
+
+        } else {
+
+            merged.push(hole);
+
+        }
+    });
+
+    state.holes = merged;
+
+    render();
+
+    Swal.fire({
+        title: `${process.name} Deallocated`,
+        icon: 'success'
+    });
+}
+        // --- Render UI ---
+        function render() {
+            // Render Holes
+            const holesList = document.getElementById('holesList');
+            holesList.innerHTML = state.holes.map((h, i) => `
+                <div class="flex gap-3 p-3 bg-white rounded-xl border shadow-sm">
+                    <input type="number" placeholder="Address" value="${h.startingAddress}" onchange="state.holes[${i}].startingAddress = Number(this.value)" class="flex-1 p-2 border-b-2 outline-none font-medium">
+                    <input type="number" placeholder="Size KB" value="${h.size || ''}" onchange="state.holes[${i}].size = Number(this.value)" class="w-32 p-2 border-b-2 outline-none font-medium">
+                    <button onclick="removeHole(${h.id})" class="text-red-400 hover:text-red-600">✕</button>
+                </div>
+            `).join('');
+
+            // Render Process Queue
+            const processQueue = document.getElementById('processQueue');
+            processQueue.innerHTML = state.processes.map((p, pIdx) => `
+                <div class="p-4 rounded-2xl border-2 relative border-black/10">
+
+
+                    <div class="flex justify-between items-center mb-4">
+                        <input placeholder="Process Name" value="${p.name}" onchange="state.processes[${pIdx}].name = this.value" class="font-black text-xl outline-none bg-transparent w-full text-[#233D4F]">
+                        <button onclick="removeProcess(${p.id})" class="text-red-500 font-bold p-2">Delete</button>
+                    </div>
+                    <div class="grid grid-cols-1 gap-2">
+                        ${p.segments.map((s, sIdx) => `
+                            <div class="flex gap-2 items-center bg-gray-50 p-2 rounded-lg border">
+                                <input placeholder="Seg Name" value="${s.name}" onchange="state.processes[${pIdx}].segments[${sIdx}].name = this.value" class="flex-1 bg-transparent border-none outline-none text-sm">
+                                <input type="number" placeholder="Size" value="${s.size || ''}" onchange="state.processes[${pIdx}].segments[${sIdx}].size = Number(this.value)" class="w-20 bg-white p-1 border rounded text-sm">
+                                <button onclick="removeSegment(${p.id}, ${sIdx})" class="text-gray-400 text-xs">✕</button>
+                            </div>
+                        `).join('')}
+                        <button onclick="addSegment(${p.id})" class="text-xs font-bold mt-1 text-left text-[#DE802B]">+ Add Segment</button>
+                    </div>
+                </div>
+            `).join('');
+
+            // Render Allocated Processes
+const allocatedList = document.getElementById('allocatedList');
+
+allocatedList.innerHTML = state.allocatedProcesses.map(p => `
+    <div class="p-4 rounded-xl border bg-[#F5FBE6] flex justify-between items-center">
+
+        <div>
+            <div class="font-black text-[#233D4F]">
+                ${p.name}
+            </div>
+
+            <div class="text-sm text-gray-600">
+                ${p.segments.map(s =>
+                    `${s.name} (${s.size}K)`
+                ).join(' | ')}
+            </div>
+        </div>
+
+        <button
+            onclick="deallocateProcess(${p.id})"
+            class="bg-red-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-600"
+        >
+            Deallocate
+        </button>
+
+    </div>
+`).join('');
+
+
+            // Render Memory Map
+            const memoryMap = document.getElementById('memoryMap');
+            let mapHTML = '';
+            
+            // Allocated segments
+            state.allocatedProcesses.forEach(p => {
+                p.segments.forEach(s => {
+                    const height = state.totalMemory > 0 ? (s.size / state.totalMemory) * 100 : 0;
+                    mapHTML += `
+                        <div class="w-full border-b flex items-center justify-center text-white font-bold bg-[#215E61]" style="height: ${height}%; min-height: 40px;">
+                            ${s.name || 'Seg'} (${s.size}K)
+                        </div>
+                    `;
+                });
+            });
+
+            // Holes
+            state.holes.forEach(h => {
+                if (h.size > 0) {
+                    const height = state.totalMemory > 0 ? (h.size / state.totalMemory) * 100 : 0;
+                    mapHTML += `
+                        <div class="w-full border-b border-dashed border-gray-400 flex items-center justify-center text-gray-500 text-xs italic bg-white" style="height: ${height}%;">
+                            Hole: ${h.size}K Free
+                        </div>
+                    `;
+                }
+            });
+            memoryMap.innerHTML = mapHTML;
+        }
+
+        // Initial Render
+        render();
+    </script>
+</body>
+</html>
