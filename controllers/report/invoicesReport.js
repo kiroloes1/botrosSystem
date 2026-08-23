@@ -47,7 +47,7 @@ function getDateRange(period, from, to) {
 
 exports.getSalesReport = async (req, res) => {
   try {
-    const period = req.query.period || "today"; // today | week | month | custom
+    const period = req.query.period || "today";
     const { from, to, productId } = req.query;
 
     const page = parseInt(req.query.page) || 1;
@@ -57,17 +57,13 @@ exports.getSalesReport = async (req, res) => {
 
     const { start, end } = getDateRange(period, from, to);
 
-    // بناء شروط الفلترة بالفواتير
     const invoiceMatch = { invoiceDate: { $gte: start, $lte: end } };
-    // نفس فترة التقرير بالظبط تتطبق على المصاريف
     const expenseMatch = { expenseDate: { $gte: start, $lte: end } };
 
-    // فلترة بناءً على ID منتج معين إذا تم إرساله
     if (productId && mongoose.Types.ObjectId.isValid(productId)) {
       invoiceMatch["items.product"] = new mongoose.Types.ObjectId(productId);
     }
 
-    // بناء شرط البحث بالاسم أو الكود للمنتجات
     const productSearchMatch = search
       ? {
           $or: [
@@ -85,7 +81,7 @@ exports.getSalesReport = async (req, res) => {
       productProfitAgg
     ] = await Promise.all([
       // ------------------------------------------------------
-      // 1. إجمالي المبيعات (عدد الفواتير والمبالغ)
+      // 1. إجمالي المبيعات
       // ------------------------------------------------------
       Invoice.aggregate([
         { $match: invoiceMatch },
@@ -100,7 +96,7 @@ exports.getSalesReport = async (req, res) => {
       ]),
 
       // ------------------------------------------------------
-      // 2. إجمالي تكلفة البضاعة المباعة لحساب الأرباح
+      // 2. إجمالي تكلفة البضاعة المباعة
       // ------------------------------------------------------
       Invoice.aggregate([
         { $match: invoiceMatch },
@@ -133,7 +129,7 @@ exports.getSalesReport = async (req, res) => {
       ]),
 
       // ------------------------------------------------------
-      // 3. المنتجات الأكثر مبيعاً (مع Search و Pagination)
+      // 3. المنتجات الأكثر مبيعاً
       // ------------------------------------------------------
       Invoice.aggregate([
         { $match: invoiceMatch },
@@ -185,7 +181,7 @@ exports.getSalesReport = async (req, res) => {
       ]),
 
       // ------------------------------------------------------
-      // 4. إجمالي المصاريف في نفس فترة التقرير
+      // 4. إجمالي المصاريف
       // ------------------------------------------------------
       Expense.aggregate([
         { $match: expenseMatch },
@@ -198,7 +194,7 @@ exports.getSalesReport = async (req, res) => {
       ]),
 
       // ------------------------------------------------------
-      // 5. ربح كل منتج على حدة ⭐ NEW
+      // 5. ربح كل منتج على حدة (الكود المُصحح)
       // ------------------------------------------------------
       Invoice.aggregate([
         { $match: invoiceMatch },
@@ -217,11 +213,9 @@ exports.getSalesReport = async (req, res) => {
         { $unwind: { path: "$productInfo", preserveNullAndEmptyArrays: true } },
         {
           $addFields: {
-            // حساب تكلفة هذا المنتج في هذا البند
             lineCost: {
               $multiply: ["$items.quantity", { $ifNull: ["$productInfo.purchasePrice", 0] }]
             },
-            // ربح هذا البند = سعر البيع - التكلفة
             lineProfit: {
               $subtract: [
                 "$items.subtotal",
@@ -243,19 +237,21 @@ exports.getSalesReport = async (req, res) => {
             totalCost: { $sum: "$lineCost" },
             totalProfit: { $sum: "$lineProfit" },
             timesSold: { $sum: 1 },
-            // متوسط سعر البيع للقطعة الواحدة
-            averageSellingPrice: {
-              $cond: [
-                { $eq: [{ $sum: "$items.quantity" }, 0] },
-                0,
-                { $divide: [{ $sum: "$items.subtotal" }, { $sum: "$items.quantity" }] }
-              ]
-            }
+            // ✅ إصلاح: حساب مجموع الكمية والإيراد ثم حساب المتوسط بعد الـ $group
+            totalQuantityForAvg: { $sum: "$items.quantity" },
+            totalRevenueForAvg: { $sum: "$items.subtotal" }
           }
         },
-        // حساب هامش الربح لكل منتج
+        // ✅ إضافة مرحلة جديدة لحساب المتوسط وهامش الربح بعد التجميع
         {
           $addFields: {
+            averageSellingPrice: {
+              $cond: [
+                { $eq: ["$totalQuantityForAvg", 0] },
+                0,
+                { $divide: ["$totalRevenueForAvg", "$totalQuantityForAvg"] }
+              ]
+            },
             profitMargin: {
               $cond: [
                 { $eq: ["$totalRevenue", 0] },
@@ -265,7 +261,14 @@ exports.getSalesReport = async (req, res) => {
             }
           }
         },
-        { $sort: { totalProfit: -1 } }, // ترتيب تنازلي حسب الربح
+        // ✅ إزالة الحقول المؤقتة
+        {
+          $project: {
+            totalQuantityForAvg: 0,
+            totalRevenueForAvg: 0
+          }
+        },
+        { $sort: { totalProfit: -1 } },
         {
           $facet: {
             metadata: [{ $count: "total" }],
@@ -302,32 +305,25 @@ exports.getSalesReport = async (req, res) => {
     const totalCost = profitAgg[0]?.totalCost || 0;
     const totalExpenses = expensesAgg[0]?.totalExpenses || 0;
 
-    // صافي الربح = المبيعات - تكلفة البضاعة - المصاريف
     const netProfit = Number((salesSummary.finalPrice - totalCost - totalExpenses).toFixed(2));
     const profitMargin =
       salesSummary.finalPrice > 0
         ? Number(((netProfit / salesSummary.finalPrice) * 100).toFixed(1))
         : 0;
 
-    // استخراج بيانات الأكثر مبيعاً
     const topSellingCount = topSellingAgg[0]?.metadata[0]?.total || 0;
     const topSellingProducts = topSellingAgg[0]?.data || [];
 
-    // استخراج بيانات ربح المنتجات
     const productProfitData = productProfitAgg[0] || { metadata: [{ total: 0 }], data: [] };
     const productProfitCount = productProfitData.metadata[0]?.total || 0;
     const productProfitItems = productProfitData.data || [];
 
-    // ============================================================
-    // الرد النهائي
-    // ============================================================
-
     return res.status(200).json({
       success: true,
-      period: { 
-        type: period, 
-        from: start, 
-        to: end 
+      period: {
+        type: period,
+        from: start,
+        to: end
       },
       pagination: {
         page,
@@ -351,7 +347,6 @@ exports.getSalesReport = async (req, res) => {
         totalItems: topSellingCount,
         items: topSellingProducts,
       },
-      // ⭐⭐ قسم ربح المنتجات الجديد
       productProfit: {
         totalItems: productProfitCount,
         items: productProfitItems,
