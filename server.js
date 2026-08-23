@@ -41,7 +41,7 @@ const dashboard =require(`${__dirname}/routes/dashboard/dash`)
 const report =require(`${__dirname}/routes/report/report`)
 const paymentDashboard =require(`${__dirname}/routes/dashboard/paymnet`)
 const backupRoutes=require(`${__dirname}//backups/backup`)
-
+const notifications=require("./routes/notificationRoutes")
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
@@ -60,6 +60,8 @@ app.use('/v1/purchase',purchaseRoute);
 app.use('/v1/dashboard',dashboard);
 app.use('/v1/paymentDashboard',paymentDashboard);
 app.use('/v1/reports',report);
+app.use('/v1/notifications',notifications);
+
 app.use("/v1/", backupRoutes);
 
 
