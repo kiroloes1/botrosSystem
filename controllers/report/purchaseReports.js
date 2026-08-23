@@ -1,7 +1,6 @@
 const mongoose = require("mongoose");
 const Invoice = require(`${__dirname}/../../models/invoices`);
 const Purchase = require(`${__dirname}/../../models/purchase`);
-const SalesReturn = require(`${__dirname}/../../models/return`);
 const Product = require(`${__dirname}/../../models/products`);
 const PaymentModel = require(`${__dirname}/../../models/payment`);
 
@@ -59,14 +58,12 @@ exports.getPurchasesReport = async (req, res) => {
 
     const { start, end } = getDateRange(period, from, to);
 
-    // شروط الفلترة الأساسية للفواتير ومرتجعات الشراء
+    // شروط الفلترة الأساسية للفواتير
     const purchaseMatch = { purchaseDate: { $gte: start, $lte: end } };
-    const purchaseReturnMatch = { type: "purchase", returnDate: { $gte: start, $lte: end } };
 
     // فلترة بناءً على ID منتج معين إذا تم إرساله
     if (productId && mongoose.Types.ObjectId.isValid(productId)) {
       purchaseMatch["items.product"] = new mongoose.Types.ObjectId(productId);
-      purchaseReturnMatch["items.product"] = new mongoose.Types.ObjectId(productId);
     }
 
     // شرط البحث برمز أو اسم المنتج
@@ -79,13 +76,7 @@ exports.getPurchasesReport = async (req, res) => {
         }
       : {};
 
-    const [
-      purchasesSummaryAgg,
-      topPurchasedAgg,
-      returnsSummaryAgg,
-      topReturnedAgg,
-      paymentsAgg,
-    ] = await Promise.all([
+    const [purchasesSummaryAgg, topPurchasedAgg, paymentsAgg] = await Promise.all([
       // ------------------------------------------------------
       // 1. إجمالي المشتريات (عدد الفواتير، المجموع قبل وبعد الخصم)
       // ------------------------------------------------------
@@ -154,73 +145,7 @@ exports.getPurchasesReport = async (req, res) => {
       ]),
 
       // ------------------------------------------------------
-      // 3. إجمالي مرتجعات المشتريات خلال الفترة
-      // ------------------------------------------------------
-      SalesReturn.aggregate([
-        { $match: purchaseReturnMatch },
-        {
-          $group: {
-            _id: null,
-            count: { $sum: 1 },
-            totalAmount: { $sum: "$totalAmount" },
-          },
-        },
-      ]),
-
-      // ------------------------------------------------------
-      // 4. المنتجات الأكثر إرجاعاً للمورد (مع Search و Pagination)
-      // ------------------------------------------------------
-      SalesReturn.aggregate([
-        { $match: purchaseReturnMatch },
-        { $unwind: "$items" },
-        ...(productId && mongoose.Types.ObjectId.isValid(productId)
-          ? [{ $match: { "items.product": new mongoose.Types.ObjectId(productId) } }]
-          : []),
-        {
-          $lookup: {
-            from: "products",
-            localField: "items.product",
-            foreignField: "_id",
-            as: "productInfo",
-          },
-        },
-        { $unwind: { path: "$productInfo", preserveNullAndEmptyArrays: true } },
-        { $match: productSearchMatch },
-        {
-          $group: {
-            _id: "$items.product",
-            productName: { $first: "$items.productName" },
-            code: { $first: "$productInfo.code" },
-            totalReturnQuantity: { $sum: "$items.returnQuantity" },
-            totalReturnAmount: { $sum: "$items.subtotal" },
-            timesReturned: { $sum: 1 },
-          },
-        },
-        { $sort: { totalReturnQuantity: -1 } },
-        {
-          $facet: {
-            metadata: [{ $count: "total" }],
-            data: [
-              { $skip: skip },
-              { $limit: limit },
-              {
-                $project: {
-                  _id: 0,
-                  product: "$_id",
-                  productName: 1,
-                  code: 1,
-                  totalReturnQuantity: 1,
-                  totalReturnAmount: 1,
-                  timesReturned: 1,
-                },
-              },
-            ],
-          },
-        },
-      ]),
-
-      // ------------------------------------------------------
-      // 5. المدفوعات الفعلية للموردين
+      // 3. المدفوعات الفعلية للموردين
       // ------------------------------------------------------
       PaymentModel.aggregate([
         {
@@ -241,7 +166,6 @@ exports.getPurchasesReport = async (req, res) => {
     ]);
 
     const purchasesSummary = purchasesSummaryAgg[0] || { purchasesCount: 0, totalPrice: 0, finalPrice: 0 };
-    const returnsSummary = returnsSummaryAgg[0] || { count: 0, totalAmount: 0 };
 
     const totalPaid = paymentsAgg.reduce((acc, p) => acc + (p.totalAmount || 0), 0);
     const paymentsByMethod = paymentsAgg.map((p) => ({
@@ -254,10 +178,6 @@ exports.getPurchasesReport = async (req, res) => {
     const topPurchasedCount = topPurchasedAgg[0]?.metadata[0]?.total || 0;
     const topPurchasedProducts = topPurchasedAgg[0]?.data || [];
 
-    // استخراج بيانات الترقيم لقائمة الأكثر إرجاعاً
-    const topReturnedCount = topReturnedAgg[0]?.metadata[0]?.total || 0;
-    const topReturnedProducts = topReturnedAgg[0]?.data || [];
-
     return res.status(200).json({
       success: true,
       period: { type: period, from: start, to: end },
@@ -265,34 +185,20 @@ exports.getPurchasesReport = async (req, res) => {
         page,
         limit,
         topPurchasedTotalPages: Math.ceil(topPurchasedCount / limit) || 1,
-        topReturnedTotalPages: Math.ceil(topReturnedCount / limit) || 1,
       },
       purchases: {
         purchasesCount: purchasesSummary.purchasesCount,
         totalPrice: purchasesSummary.totalPrice,
         totalDiscount: Number((purchasesSummary.totalPrice - purchasesSummary.finalPrice).toFixed(2)),
         finalPrice: purchasesSummary.finalPrice,
-        netPurchasesAfterReturns: Number((purchasesSummary.finalPrice - returnsSummary.totalAmount).toFixed(2)),
       },
       payments: {
         totalPaid,
         byMethod: paymentsByMethod,
       },
-      returns: {
-        count: returnsSummary.count,
-        totalAmount: returnsSummary.totalAmount,
-        returnRate:
-          purchasesSummary.purchasesCount > 0
-            ? Number(((returnsSummary.count / purchasesSummary.purchasesCount) * 100).toFixed(1))
-            : 0,
-      },
       topPurchasedProducts: {
         totalItems: topPurchasedCount,
         items: topPurchasedProducts,
-      },
-      topReturnedProducts: {
-        totalItems: topReturnedCount,
-        items: topReturnedProducts,
       },
     });
   } catch (err) {

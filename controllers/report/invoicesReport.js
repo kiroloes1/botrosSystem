@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const Invoice = require(`${__dirname}/../../models/invoices`);
-const SalesReturn = require(`${__dirname}/../../models/return`);
 const Product = require(`${__dirname}/../../models/products`);
+const Expense = require(`${__dirname}/../../models/expenses`);
 
 // ============================================================
 
@@ -57,14 +57,14 @@ exports.getSalesReport = async (req, res) => {
 
     const { start, end } = getDateRange(period, from, to);
 
-    // بناء شروط الفلترة بالفواتير المباشرة
+    // بناء شروط الفلترة بالفواتير
     const invoiceMatch = { invoiceDate: { $gte: start, $lte: end } };
-    const salesReturnMatch = { type: "invoice", returnDate: { $gte: start, $lte: end } };
+    // نفس فترة التقرير بالظبط تتطبق على المصاريف
+    const expenseMatch = { expenseDate: { $gte: start, $lte: end } };
 
     // فلترة بناءً على ID منتج معين إذا تم إرساله
     if (productId && mongoose.Types.ObjectId.isValid(productId)) {
       invoiceMatch["items.product"] = new mongoose.Types.ObjectId(productId);
-      salesReturnMatch["items.product"] = new mongoose.Types.ObjectId(productId);
     }
 
     // بناء شرط البحث بالاسم أو الكود للمنتجات
@@ -81,8 +81,8 @@ exports.getSalesReport = async (req, res) => {
       salesSummaryAgg,
       profitAgg,
       topSellingAgg,
-      returnsSummaryAgg,
-      topReturnedAgg,
+      expensesAgg,
+      productProfitAgg
     ] = await Promise.all([
       // ------------------------------------------------------
       // 1. إجمالي المبيعات (عدد الفواتير والمبالغ)
@@ -185,24 +185,23 @@ exports.getSalesReport = async (req, res) => {
       ]),
 
       // ------------------------------------------------------
-      // 4. إجمالي مرتجعات الفواتير
+      // 4. إجمالي المصاريف في نفس فترة التقرير
       // ------------------------------------------------------
-      SalesReturn.aggregate([
-        { $match: salesReturnMatch },
+      Expense.aggregate([
+        { $match: expenseMatch },
         {
           $group: {
             _id: null,
-            count: { $sum: 1 },
-            totalAmount: { $sum: "$totalAmount" },
+            totalExpenses: { $sum: "$totalAmount" },
           },
         },
       ]),
 
       // ------------------------------------------------------
-      // 5. المنتجات الأكثر إرجاعاً (مع Search و Pagination)
+      // 5. ربح كل منتج على حدة ⭐ NEW
       // ------------------------------------------------------
-      SalesReturn.aggregate([
-        { $match: salesReturnMatch },
+      Invoice.aggregate([
+        { $match: invoiceMatch },
         { $unwind: "$items" },
         ...(productId && mongoose.Types.ObjectId.isValid(productId)
           ? [{ $match: { "items.product": new mongoose.Types.ObjectId(productId) } }]
@@ -216,18 +215,57 @@ exports.getSalesReport = async (req, res) => {
           },
         },
         { $unwind: { path: "$productInfo", preserveNullAndEmptyArrays: true } },
-        { $match: productSearchMatch },
+        {
+          $addFields: {
+            // حساب تكلفة هذا المنتج في هذا البند
+            lineCost: {
+              $multiply: ["$items.quantity", { $ifNull: ["$productInfo.purchasePrice", 0] }]
+            },
+            // ربح هذا البند = سعر البيع - التكلفة
+            lineProfit: {
+              $subtract: [
+                "$items.subtotal",
+                {
+                  $multiply: ["$items.quantity", { $ifNull: ["$productInfo.purchasePrice", 0] }]
+                }
+              ]
+            }
+          }
+        },
         {
           $group: {
             _id: "$items.product",
             productName: { $first: "$items.productName" },
             code: { $first: "$productInfo.code" },
-            totalReturnQuantity: { $sum: "$items.returnQuantity" },
-            totalReturnAmount: { $sum: "$items.subtotal" },
-            timesReturned: { $sum: 1 },
-          },
+            category: { $first: "$productInfo.category" },
+            totalQuantitySold: { $sum: "$items.quantity" },
+            totalRevenue: { $sum: "$items.subtotal" },
+            totalCost: { $sum: "$lineCost" },
+            totalProfit: { $sum: "$lineProfit" },
+            timesSold: { $sum: 1 },
+            // متوسط سعر البيع للقطعة الواحدة
+            averageSellingPrice: {
+              $cond: [
+                { $eq: [{ $sum: "$items.quantity" }, 0] },
+                0,
+                { $divide: [{ $sum: "$items.subtotal" }, { $sum: "$items.quantity" }] }
+              ]
+            }
+          }
         },
-        { $sort: { totalReturnQuantity: -1 } },
+        // حساب هامش الربح لكل منتج
+        {
+          $addFields: {
+            profitMargin: {
+              $cond: [
+                { $eq: ["$totalRevenue", 0] },
+                0,
+                { $multiply: [{ $divide: ["$totalProfit", "$totalRevenue"] }, 100] }
+              ]
+            }
+          }
+        },
+        { $sort: { totalProfit: -1 } }, // ترتيب تنازلي حسب الربح
         {
           $facet: {
             metadata: [{ $count: "total" }],
@@ -240,74 +278,86 @@ exports.getSalesReport = async (req, res) => {
                   product: "$_id",
                   productName: 1,
                   code: 1,
-                  totalReturnQuantity: 1,
-                  totalReturnAmount: 1,
-                  timesReturned: 1,
-                },
-              },
-            ],
-          },
-        },
-      ]),
+                  category: 1,
+                  totalQuantitySold: 1,
+                  totalRevenue: 1,
+                  totalCost: 1,
+                  totalProfit: 1,
+                  profitMargin: { $round: ["$profitMargin", 1] },
+                  averageSellingPrice: { $round: ["$averageSellingPrice", 2] },
+                  timesSold: 1
+                }
+              }
+            ]
+          }
+        }
+      ])
     ]);
+
+    // ============================================================
+    // استخراج النتائج
+    // ============================================================
 
     const salesSummary = salesSummaryAgg[0] || { invoicesCount: 0, totalPrice: 0, finalPrice: 0 };
     const totalCost = profitAgg[0]?.totalCost || 0;
+    const totalExpenses = expensesAgg[0]?.totalExpenses || 0;
 
-    const netProfit = Number((salesSummary.finalPrice - totalCost).toFixed(2));
+    // صافي الربح = المبيعات - تكلفة البضاعة - المصاريف
+    const netProfit = Number((salesSummary.finalPrice - totalCost - totalExpenses).toFixed(2));
     const profitMargin =
       salesSummary.finalPrice > 0
         ? Number(((netProfit / salesSummary.finalPrice) * 100).toFixed(1))
         : 0;
 
-    const returnsSummary = returnsSummaryAgg[0] || { count: 0, totalAmount: 0 };
-
-    // استخراج بيانات الترقيم لقائمة الأكثر مبيعاً
+    // استخراج بيانات الأكثر مبيعاً
     const topSellingCount = topSellingAgg[0]?.metadata[0]?.total || 0;
     const topSellingProducts = topSellingAgg[0]?.data || [];
 
-    // استخراج بيانات الترقيم لقائمة الأكثر إرجاعاً
-    const topReturnedCount = topReturnedAgg[0]?.metadata[0]?.total || 0;
-    const topReturnedProducts = topReturnedAgg[0]?.data || [];
+    // استخراج بيانات ربح المنتجات
+    const productProfitData = productProfitAgg[0] || { metadata: [{ total: 0 }], data: [] };
+    const productProfitCount = productProfitData.metadata[0]?.total || 0;
+    const productProfitItems = productProfitData.data || [];
+
+    // ============================================================
+    // الرد النهائي
+    // ============================================================
 
     return res.status(200).json({
       success: true,
-      period: { type: period, from: start, to: end },
+      period: { 
+        type: period, 
+        from: start, 
+        to: end 
+      },
       pagination: {
         page,
         limit,
         topSellingTotalPages: Math.ceil(topSellingCount / limit) || 1,
-        topReturnedTotalPages: Math.ceil(topReturnedCount / limit) || 1,
+        productProfitTotalPages: Math.ceil(productProfitCount / limit) || 1,
       },
       sales: {
         invoicesCount: salesSummary.invoicesCount,
         totalPrice: salesSummary.totalPrice,
         totalDiscount: Number((salesSummary.totalPrice - salesSummary.finalPrice).toFixed(2)),
         finalPrice: salesSummary.finalPrice,
-        netSalesAfterReturns: Number((salesSummary.finalPrice - returnsSummary.totalAmount).toFixed(2)),
       },
       profit: {
         totalCost,
+        totalExpenses,
         netProfit,
         profitMargin,
-      },
-      returns: {
-        count: returnsSummary.count,
-        totalAmount: returnsSummary.totalAmount,
-        returnRate:
-          salesSummary.invoicesCount > 0
-            ? Number(((returnsSummary.count / salesSummary.invoicesCount) * 100).toFixed(1))
-            : 0,
       },
       topSellingProducts: {
         totalItems: topSellingCount,
         items: topSellingProducts,
       },
-      topReturnedProducts: {
-        totalItems: topReturnedCount,
-        items: topReturnedProducts,
+      // ⭐⭐ قسم ربح المنتجات الجديد
+      productProfit: {
+        totalItems: productProfitCount,
+        items: productProfitItems,
       },
     });
+
   } catch (err) {
     return res.status(400).json({
       success: false,
