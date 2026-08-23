@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const Invoice = require(`${__dirname}/../../models/invoices`);
 const Product = require(`${__dirname}/../../models/products`);
-const Expense = require(`${__dirname}/../../models/expenses`);
+const Expense = require(`${__dirname}/../../models/expense`);
 
 // ============================================================
 
