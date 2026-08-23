@@ -185,7 +185,7 @@ async function createBackup() {
         .toArray();
     }
 
-    const fileName = "beboSystemBackup.json";
+    const fileName = "botrosSystemBackup.json";
 
     // استخدم /tmp بدل __dirname
     const filePath = path.join("/tmp", fileName);
