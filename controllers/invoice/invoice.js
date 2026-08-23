@@ -783,17 +783,8 @@ exports.getInvoicesByCustomer = async (req, res) => {
         // Pagination
         // =========================
 
-        const page = Math.max(
-            1,
-            Number(pageQuery) || 1
-        );
+  
 
-        const limit = Math.min(
-            100000,
-            Math.max(1, Number(limitQuery) || 20)
-        );
-
-        const skip = (page - 1) * limit;
 
 
         // =========================

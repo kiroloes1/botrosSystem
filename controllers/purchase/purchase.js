@@ -1187,9 +1187,7 @@ exports.searchPurchase = async (req, res) => {
             limit: limitQuery
         } = req.query;
 
-        const page = Math.max(1, Number(pageQuery) || 1);
-        const limit = Math.max(1, Number(limitQuery) || 5);
-        const skip = (page - 1) * limit;
+
 
         const pipeline = [
             // 1. ربط جدول العملاء أولاً
@@ -1240,10 +1238,7 @@ exports.searchPurchase = async (req, res) => {
             },
             {
                 $facet: {
-                    data: [
-                        { $skip: skip },
-                        { $limit: limit }
-                    ],
+ 
                     total: [
                         { $count: "count" }
                     ]
