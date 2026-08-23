@@ -750,10 +750,8 @@ exports.getInvoiceById = async (req, res) => {
     });
   }
 };
-
 exports.getInvoicesByCustomer = async (req, res) => {
     try {
-
         const { customerId } = req.query;
 
         const {
@@ -763,10 +761,7 @@ exports.getInvoicesByCustomer = async (req, res) => {
             maxAmount,
             hasRemaining,
             paymentMethod,
-            page: pageQuery,
-            limit: limitQuery,
         } = req.query;
-
 
         // =========================
         // Validate Customer ID
@@ -778,15 +773,6 @@ exports.getInvoicesByCustomer = async (req, res) => {
             });
         }
 
-
-        // =========================
-        // Pagination
-        // =========================
-
-  
-
-
-
         // =========================
         // Invoice Filter
         // =========================
@@ -795,31 +781,25 @@ exports.getInvoicesByCustomer = async (req, res) => {
             customer: customerId,
         };
 
-
         // =========================
         // Date Filter
         // =========================
 
         if (fromDate || toDate) {
-
             filter.invoiceDate = {};
 
             if (fromDate) {
-
                 const from = new Date(fromDate);
 
                 if (!isNaN(from.getTime())) {
                     filter.invoiceDate.$gte = from;
                 }
-
             }
 
             if (toDate) {
-
                 const to = new Date(toDate);
 
                 if (!isNaN(to.getTime())) {
-
                     // نهاية اليوم
                     to.setHours(
                         23,
@@ -830,11 +810,8 @@ exports.getInvoicesByCustomer = async (req, res) => {
 
                     filter.invoiceDate.$lte = to;
                 }
-
             }
-
         }
-
 
         // =========================
         // Amount Filter
@@ -844,25 +821,18 @@ exports.getInvoicesByCustomer = async (req, res) => {
             minAmount !== undefined ||
             maxAmount !== undefined
         ) {
-
             filter.finalPrice = {};
 
             if (minAmount !== undefined) {
-
                 filter.finalPrice.$gte =
                     Number(minAmount);
-
             }
 
             if (maxAmount !== undefined) {
-
                 filter.finalPrice.$lte =
                     Number(maxAmount);
-
             }
-
         }
-
 
         // =========================
         // Get Invoices
@@ -886,7 +856,6 @@ exports.getInvoicesByCustomer = async (req, res) => {
             })
             .lean();
 
-
         // =========================
         // Invoice IDs
         // =========================
@@ -894,7 +863,6 @@ exports.getInvoicesByCustomer = async (req, res) => {
         const invoiceIds = invoices.map(
             invoice => invoice._id
         );
-
 
         // =========================
         // Get Payments
@@ -909,7 +877,6 @@ exports.getInvoicesByCustomer = async (req, res) => {
             }).lean()
             : [];
 
-
         // =========================
         // Group Payments By Invoice
         // =========================
@@ -917,7 +884,6 @@ exports.getInvoicesByCustomer = async (req, res) => {
         const paymentsMap = new Map();
 
         for (const payment of payments) {
-
             const invoiceId =
                 payment.moduleId.toString();
 
@@ -933,7 +899,6 @@ exports.getInvoicesByCustomer = async (req, res) => {
                 .push(payment);
         }
 
-
         // =========================
         // Get Returns
         // =========================
@@ -945,7 +910,6 @@ exports.getInvoicesByCustomer = async (req, res) => {
                 }
             }).lean()
             : [];
-
 
         // =========================
         // Group Returns By Invoice
@@ -963,19 +927,16 @@ exports.getInvoicesByCustomer = async (req, res) => {
                 returnInvoice.invoice.toString();
 
             if (!returnsMap.has(invoiceId)) {
-
                 returnsMap.set(
                     invoiceId,
                     []
                 );
-
             }
 
             returnsMap
                 .get(invoiceId)
                 .push(returnInvoice);
         }
-
 
         // =========================
         // Calculate Payment + Returns
@@ -986,18 +947,24 @@ exports.getInvoicesByCustomer = async (req, res) => {
             const invoiceId =
                 invoice._id.toString();
 
-
+            // =========================
             // Payments
+            // =========================
+
             const invoicePayments =
                 paymentsMap.get(invoiceId) || [];
 
-
+            // =========================
             // Returns
+            // =========================
+
             const invoiceReturns =
                 returnsMap.get(invoiceId) || [];
 
+            // =========================
+            // Payment Data
+            // =========================
 
-            // Payment data
             const payment =
                 invoicePayments.map(p => ({
                     paymentMethod:
@@ -1007,26 +974,33 @@ exports.getInvoicesByCustomer = async (req, res) => {
                         Number(p.amount) || 0,
                 }));
 
+            // =========================
+            // Total Paid
+            // =========================
 
-            // Total paid
             const paidAmount =
                 payment.reduce(
                     (sum, p) =>
-                        sum + p.paidAmount,
+                        sum +
+                        (Number(p.paidAmount) || 0),
                     0
                 );
 
-
+            // =========================
             // Remaining
+            // =========================
+
             const remainingAmount =
                 Math.max(
                     0,
-                    (Number(invoice.finalPrice) || 0)
-                    - paidAmount
+                    (Number(invoice.finalPrice) || 0) -
+                    paidAmount
                 );
 
+            // =========================
+            // Total Returns
+            // =========================
 
-            // Total returns
             const totalReturned =
                 invoiceReturns.reduce(
                     (sum, r) =>
@@ -1035,9 +1009,7 @@ exports.getInvoicesByCustomer = async (req, res) => {
                     0
                 );
 
-
             return {
-
                 ...invoice,
 
                 // Payments
@@ -1050,23 +1022,19 @@ exports.getInvoicesByCustomer = async (req, res) => {
 
                 remainingAmount,
 
-
                 // Returns
                 returns:
                     invoiceReturns,
 
                 totalReturned,
             };
-
         });
-
 
         // =========================
         // Payment Method Filter
         // =========================
 
         if (paymentMethod) {
-
             invoices =
                 invoices.filter(invoice =>
                     invoice.payment.some(
@@ -1075,9 +1043,7 @@ exports.getInvoicesByCustomer = async (req, res) => {
                             paymentMethod
                     )
                 );
-
         }
-
 
         // =========================
         // Remaining Filter
@@ -1091,59 +1057,28 @@ exports.getInvoicesByCustomer = async (req, res) => {
                         invoice.remainingAmount > 0
                 );
 
-        }
-        else if (hasRemaining === "false") {
+        } else if (hasRemaining === "false") {
 
             invoices =
                 invoices.filter(
                     invoice =>
                         invoice.remainingAmount === 0
                 );
-
         }
-
-
-        // =========================
-        // Pagination After Filters
-        // =========================
-
-        const total =
-            invoices.length;
-
-        const totalPages =
-            Math.ceil(total / limit);
-
-        const paginatedInvoices =
-            invoices.slice(
-                skip,
-                skip + limit
-            );
-
 
         // =========================
         // Response
         // =========================
 
+        const total = invoices.length;
+
         return res.status(200).json({
-
-            page,
-
-            limit,
-
-            results:
-                paginatedInvoices.length,
-
+            results: invoices.length,
             total,
-
-            totalPages,
-
-            invoices:
-                paginatedInvoices,
-
+            invoices,
         });
 
-    }
-    catch (err) {
+    } catch (err) {
 
         console.error(
             "getInvoicesByCustomer Error:",
@@ -1153,7 +1088,6 @@ exports.getInvoicesByCustomer = async (req, res) => {
         return res.status(500).json({
             message: err.message,
         });
-
     }
 };
 

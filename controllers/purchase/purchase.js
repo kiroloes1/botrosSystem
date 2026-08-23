@@ -896,22 +896,7 @@ exports.getPurchasesBySupplier = async (req, res) => {
             maxAmount,
             hasRemaining,
             paymentMethod,
-            page: pageQuery,
-            limit: limitQuery,
         } = req.query;
-
-        // =========================
-        // Pagination
-        // =========================
-
-        const page = Math.max(1, Number(pageQuery) || 1);
-
-        const limit = Math.max(
-            1,
-            Number(limitQuery) || 1000000000000
-        );
-
-        const skip = (page - 1) * limit;
 
         // =========================
         // Purchase Filter
@@ -942,7 +927,6 @@ exports.getPurchasesBySupplier = async (req, res) => {
                 if (!isNaN(to.getTime())) {
                     // نهاية اليوم
                     to.setHours(23, 59, 59, 999);
-
                     filter.purchaseDate.$lte = to;
                 }
             }
@@ -1011,7 +995,6 @@ exports.getPurchasesBySupplier = async (req, res) => {
         const returnsMap = new Map();
 
         for (const returnInvoice of returns) {
-
             const purchaseId =
                 returnInvoice.purchase?.toString();
 
@@ -1029,13 +1012,12 @@ exports.getPurchasesBySupplier = async (req, res) => {
         // =========================
 
         const filteredPayments = payments.filter(payment => {
-
             // أي وسيلة غير الشيك
             if (payment.paymentMethod !== "cheque") {
                 return true;
             }
 
-            // الشيك لازم يكون موجود
+            // الشيك لازم يكون موجود وغير مرتجع أو ملغي
             return (
                 payment.cheque &&
                 !["returned", "cancelled"].includes(
@@ -1122,14 +1104,11 @@ exports.getPurchasesBySupplier = async (req, res) => {
         // =========================
 
         if (hasRemaining === "true") {
-
             purchases = purchases.filter(
                 purchase =>
                     purchase.remainingAmount > 0
             );
-
         } else if (hasRemaining === "false") {
-
             purchases = purchases.filter(
                 purchase =>
                     purchase.remainingAmount === 0
@@ -1137,36 +1116,15 @@ exports.getPurchasesBySupplier = async (req, res) => {
         }
 
         // =========================
-        // Pagination
-        // =========================
-
-        const total = purchases.length;
-
-        const totalPages = Math.ceil(
-            total / limit
-        );
-
-        const paginatedPurchases =
-            purchases.slice(
-                skip,
-                skip + limit
-            );
-
-        // =========================
         // Response
         // =========================
 
         return res.status(200).json({
-            page,
-            limit,
-            results: paginatedPurchases.length,
-            total,
-            totalPages,
-            purchases: paginatedPurchases,
+            results: purchases.length,
+            purchases,
         });
 
     } catch (err) {
-
         console.error(
             "getPurchasesBySupplier Error:",
             err
