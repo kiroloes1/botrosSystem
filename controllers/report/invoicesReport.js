@@ -64,6 +64,7 @@ exports.getSalesReport = async (req, res) => {
       invoiceMatch["items.product"] = new mongoose.Types.ObjectId(productId);
     }
 
+    // ✅ شرط البحث الموحد للمنتجات
     const productSearchMatch = search
       ? {
           $or: [
@@ -113,6 +114,8 @@ exports.getSalesReport = async (req, res) => {
           },
         },
         { $unwind: { path: "$productInfo", preserveNullAndEmptyArrays: true } },
+        // ✅ إضافة شرط البحث هنا أيضاً
+        ...(search ? [{ $match: productSearchMatch }] : []),
         {
           $addFields: {
             lineCost: {
@@ -129,7 +132,7 @@ exports.getSalesReport = async (req, res) => {
       ]),
 
       // ------------------------------------------------------
-      // 3. المنتجات الأكثر مبيعاً
+      // 3. المنتجات الأكثر مبيعاً (مع Search)
       // ------------------------------------------------------
       Invoice.aggregate([
         { $match: invoiceMatch },
@@ -146,7 +149,8 @@ exports.getSalesReport = async (req, res) => {
           },
         },
         { $unwind: { path: "$productInfo", preserveNullAndEmptyArrays: true } },
-        { $match: productSearchMatch },
+        // ✅ تطبيق شرط البحث هنا (تم نقله إلى هنا)
+        ...(search ? [{ $match: productSearchMatch }] : []),
         {
           $group: {
             _id: "$items.product",
@@ -194,7 +198,7 @@ exports.getSalesReport = async (req, res) => {
       ]),
 
       // ------------------------------------------------------
-      // 5. ربح كل منتج على حدة (الكود المُصحح)
+      // 5. ربح كل منتج على حدة (مع Search) ✅ تم الإصلاح
       // ------------------------------------------------------
       Invoice.aggregate([
         { $match: invoiceMatch },
@@ -211,6 +215,8 @@ exports.getSalesReport = async (req, res) => {
           },
         },
         { $unwind: { path: "$productInfo", preserveNullAndEmptyArrays: true } },
+        // ✅ ✅ ✅ إضافة شرط البحث هنا (الجزء المفقود)
+        ...(search ? [{ $match: productSearchMatch }] : []),
         {
           $addFields: {
             lineCost: {
@@ -237,12 +243,10 @@ exports.getSalesReport = async (req, res) => {
             totalCost: { $sum: "$lineCost" },
             totalProfit: { $sum: "$lineProfit" },
             timesSold: { $sum: 1 },
-            // ✅ إصلاح: حساب مجموع الكمية والإيراد ثم حساب المتوسط بعد الـ $group
             totalQuantityForAvg: { $sum: "$items.quantity" },
             totalRevenueForAvg: { $sum: "$items.subtotal" }
           }
         },
-        // ✅ إضافة مرحلة جديدة لحساب المتوسط وهامش الربح بعد التجميع
         {
           $addFields: {
             averageSellingPrice: {
@@ -261,7 +265,6 @@ exports.getSalesReport = async (req, res) => {
             }
           }
         },
-        // ✅ إزالة الحقول المؤقتة
         {
           $project: {
             totalQuantityForAvg: 0,
