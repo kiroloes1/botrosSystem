@@ -553,6 +553,46 @@ exports.search = async (req, res) => {
 };
 
 // =============================================
+// SEARCH PRODUCTS (ADMIN)
+// =============================================
+exports.search2 = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 20;
+    const { category, search } = req.query;
+
+    if (!search) {
+      return res.status(400).json({
+        message: "من فضلك ادخل كلمات للبحث عنها"
+      });
+    }
+
+let matchQuery = {
+  ...(category && { category }),
+  totalUnits: { $gt: 0 },
+  $or: [
+    { productName: { $regex: search, $options: "i" } },
+    { description: { $regex: search, $options: "i" } },
+    { code: { $regex: search, $options: "i" } },
+  ]
+};
+
+    const products = await productModel.find(matchQuery)
+      .limit(limit)
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json({
+      message: `تم العثور على ${products.length} منتج(ات)`,
+      data: products
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      message: "حدث خطأ أثناء البحث: " + err.message
+    });
+  }
+};
+
+// =============================================
 // SUGGESTION (AUTOCOMPLETE)
 // =============================================
 exports.suggestion = async (req, res) => {

@@ -8,7 +8,7 @@ const {role}= require(`${__dirname}/../../middlewares/authorization`)
 
 // protected routes
 router.use(authMiddleware.protected);
-router.use(role('superadmin', 'manager')); // only admin and manager can access these routes
+router.use(role('superadmin', 'manager',)); // only admin and manager can access these routes
 // ========================== ROUTES ==========================
 
 
