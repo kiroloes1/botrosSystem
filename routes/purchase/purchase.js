@@ -36,9 +36,6 @@ router.get("/getPurchasesBySupplier", purchaseController.getPurchasesBySupplier)
 // search
 router.get("/search", purchaseController.searchPurchase);
 
-// search
-router.get("/search2", purchaseController.searchPurchase);
-
 
 
 // create purchase

@@ -22,6 +22,8 @@ router.get('/all', productController.getAllProducts);
 // Search products
 router.get('/search', productController.search);
 
+router.get('/search2', productController.search2);
+
 // Get all categories
 router.get('/categories/all', productController.filterProductBasedOnCategory);
 
