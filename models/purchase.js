@@ -29,7 +29,16 @@ const purchaseItemSchema = new mongoose.Schema({
 
     subtotal: { 
         type: Number, 
-    }
+    },
+    pieceSellingPrice: {
+  type: Number,
+  default: 0
+},
+
+packageSellingPrice: {
+  type: Number,
+  default: 0
+},
     
 
 }, { _id: false }); // to reduce size
@@ -48,7 +57,7 @@ const purchaseSchema = new mongoose.Schema({
    user: { 
         type: mongoose.Schema.Types.ObjectId, 
         ref: "User", 
-        required: true 
+      
     },
     oldSupplierBalance:{
       type:Number

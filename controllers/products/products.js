@@ -6,9 +6,9 @@ const fs = require('fs');
 const mongoose = require("mongoose");
 
 
-// =============================================
+
 // CREATE PRODUCT
-// =============================================
+
 exports.createProduct = async (req, res) => {
   const {
    
@@ -108,9 +108,9 @@ if (lastProduct.length > 0) {
   }
 };
 
-// =============================================
+
 // CREATE FROM EXCEL
-// =============================================
+
 exports.createFromExcel = async (req, res) => {
   try {
     if (!req.file) {
@@ -130,9 +130,9 @@ exports.createFromExcel = async (req, res) => {
     const pushProducts = [];
     const seenCodes = new Set();
 
-    // =============================================
+    
     // GET LATEST CODE FOR AUTO-GENERATION
-    // =============================================
+    
     const getNextCode = async () => {
       // Find the last product with code starting with "AG-"
       const lastProduct = await productModel.findOne(
@@ -186,9 +186,9 @@ exports.createFromExcel = async (req, res) => {
         expiration
       } = product;
 
-      // =============================================
+      
       // AUTO-GENERATE CODE IF NOT PROVIDED
-      // =============================================
+      
       if (!code || code.trim() === "") {
         code = await getNextCode();
         // Add to seenCodes to avoid duplicate in same batch
@@ -308,9 +308,9 @@ exports.createFromExcel = async (req, res) => {
   }
 };
 
-// =============================================
+
 // GET ALL PRODUCTS (ADMIN)
-// =============================================
+
 exports.getAllProducts = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -462,9 +462,9 @@ const productsData = await productModel.aggregate([
   }
 };
 
-// =============================================
+
 // GET PRODUCT BY ID (ADMIN)
-// =============================================
+
 exports.getProductByIdAdmin = async (req, res) => {
   try {
     const { id } = req.params;
@@ -495,9 +495,9 @@ exports.getProductByIdAdmin = async (req, res) => {
   }
 };
 
-// =============================================
+
 // GET ALL CATEGORIES
-// =============================================
+
 exports.filterProductBasedOnCategory = async (req, res) => {
   try {
     const categories = await productModel.distinct("category");
@@ -511,9 +511,9 @@ exports.filterProductBasedOnCategory = async (req, res) => {
   }
 };
 
-// =============================================
+
 // SEARCH PRODUCTS (ADMIN)
-// =============================================
+
 exports.search = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20;
@@ -552,9 +552,9 @@ exports.search = async (req, res) => {
   }
 };
 
-// =============================================
-// SEARCH PRODUCTS (ADMIN)
-// =============================================
+
+// search products
+
 exports.search2 = async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 20;
@@ -592,9 +592,9 @@ let matchQuery = {
   }
 };
 
-// =============================================
+
 // SUGGESTION (AUTOCOMPLETE)
-// =============================================
+
 exports.suggestion = async (req, res) => {
   try {
     const { category } = req.query;
@@ -626,9 +626,9 @@ exports.suggestion = async (req, res) => {
   }
 };
 
-// =============================================
+
 // EXPORT PRODUCTS
-// =============================================
+
 exports.exportProducts = async (req, res) => {
   try {
     const products = await productModel.find().sort({ createdAt: -1 });
@@ -645,9 +645,9 @@ exports.exportProducts = async (req, res) => {
   }
 };
 
-// =============================================
+
 // UPDATE PRODUCT
-// =============================================
+
 exports.updateProduct = async (req, res) => {
   try {
     const { productId } = req.params;
@@ -709,9 +709,9 @@ exports.updateProduct = async (req, res) => {
   }
 };
 
-// =============================================
+
 // DELETE PRODUCT
-// =============================================
+
 exports.deleteProduct = async (req, res) => {
   try {
     const { productId } = req.params;
@@ -741,9 +741,9 @@ exports.deleteProduct = async (req, res) => {
   }
 };
 
-// =============================================
+
 // DELETE ALL PRODUCTS
-// =============================================
+
 exports.deleteAllProducts = async (req, res) => {
   try {
     const products = await productModel.find();
@@ -773,9 +773,9 @@ exports.deleteAllProducts = async (req, res) => {
   }
 };
 
-// =============================================
+
 // UPLOAD IMAGE TO PRODUCT
-// =============================================
+
 exports.uploadImageToProduct = async (req, res) => {
   try {
     const file = req.file;
@@ -815,9 +815,9 @@ exports.uploadImageToProduct = async (req, res) => {
   }
 };
 
-// =============================================
+
 // DELETE IMAGE FROM PRODUCT
-// =============================================
+
 exports.deleteImageToProduct = async (req, res) => {
   try {
     const { productId } = req.params;

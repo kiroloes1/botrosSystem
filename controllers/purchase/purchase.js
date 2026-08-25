@@ -226,14 +226,56 @@ entry.totalUnitsToAdd += neededUnits;
 // تحديث آخر سعر شراء
 entry.productRef.purchasePrice = Number(item.price);
 
+// سعر بيع القطعة
+if (
+  item.pieceSellingPrice !== undefined &&
+  item.pieceSellingPrice !== null &&
+  Number(item.pieceSellingPrice) >= 0
+) {
+  entry.productRef.pieceSellingPrice =
+    Number(item.pieceSellingPrice);
+}
+
+
+// سعر بيع الكرتونة
+if (
+  item.packageSellingPrice !== undefined &&
+  item.packageSellingPrice !== null &&
+  Number(item.packageSellingPrice) >= 0
+) {
+  entry.productRef.packageSellingPrice =
+    Number(item.packageSellingPrice);
+}
+
 item.subtotal = Number(item.quantity) * Number(item.price);
 
 purchaseItems.push({
   product: entry.productRef._id,
-  productName: item.productName || entry.productRef.productName,
+
+  productName:
+    item.productName ||
+    entry.productRef.productName,
+
   unit_type: item.unit_type,
-  quantity: item.quantity,
-  price: item.price,
+
+  quantity: Number(item.quantity),
+
+  price: Number(item.price),
+
+  pieceSellingPrice:
+    Number(
+      item.pieceSellingPrice ??
+      entry.productRef.pieceSellingPrice ??
+      0
+    ),
+
+  packageSellingPrice:
+    Number(
+      item.packageSellingPrice ??
+      entry.productRef.packageSellingPrice ??
+      0
+    ),
+
   subtotal: item.subtotal,
 });
     }
@@ -510,6 +552,34 @@ exports.updatePurchase = async (req, res) => {
 
       const entry = productMap[key];
       entry.productRef.purchasePrice = Number(item.price);
+
+      // ================================
+// تحديث سعر بيع القطعة
+// ================================
+
+if (
+  item.pieceSellingPrice !== undefined &&
+  item.pieceSellingPrice !== null &&
+  Number(item.pieceSellingPrice) >= 0
+) {
+  entry.productRef.pieceSellingPrice =
+    Number(item.pieceSellingPrice);
+}
+
+
+// ================================
+// تحديث سعر بيع الكرتونة
+// ================================
+
+if (
+  item.packageSellingPrice !== undefined &&
+  item.packageSellingPrice !== null &&
+  Number(item.packageSellingPrice) >= 0
+) {
+  entry.productRef.packageSellingPrice =
+    Number(item.packageSellingPrice);
+}
+
       const unitsPerPkg = entry.productRef.unitsPerPackage || 1;
       const neededUnits = item.unit_type === "كرتونة"
         ? Number(item.quantity) * unitsPerPkg
@@ -518,14 +588,35 @@ exports.updatePurchase = async (req, res) => {
       entry.totalUnitsToAdd += neededUnits;
 
       item.subtotal = Number(item.quantity) * Number(item.price);
-      newPurchaseItems.push({
-        product: entry.productRef._id,
-        productName: item.productName || entry.productRef.productName,
-        unit_type: item.unit_type,
-        quantity: item.quantity,
-        price: item.price,
-        subtotal: item.subtotal,
-      });
+newPurchaseItems.push({
+  product: entry.productRef._id,
+
+  productName:
+    item.productName ||
+    entry.productRef.productName,
+
+  unit_type: item.unit_type,
+
+  quantity: Number(item.quantity),
+
+  price: Number(item.price),
+
+  pieceSellingPrice:
+    Number(
+      item.pieceSellingPrice ??
+      entry.productRef.pieceSellingPrice ??
+      0
+    ),
+
+  packageSellingPrice:
+    Number(
+      item.packageSellingPrice ??
+      entry.productRef.packageSellingPrice ??
+      0
+    ),
+
+  subtotal: Number(item.subtotal),
+});
     }
 
     for (const key in productMap) {
